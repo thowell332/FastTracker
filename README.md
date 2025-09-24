@@ -51,7 +51,7 @@ Occlusion-aware tracking strategy framework that detects occluded tracklets base
 | MOT16      | 79.1 | 81.0 | 66.0 | 8785  | 29028  | 290 |
 | MOT17      | 81.8 | 82.0 | 66.4 | 26850 | 75162  | 885 |
 | MOT20      | 77.9 | 81.0 | 65.7 | 24590 | 89243  | 684 |
-| FastTracker| 63.8 | 79.2 | 61.0 | 29730 | 68541  | 251 |
+| FastTracker| 64.4 | 79.2 | 61.5 | 29730 | 68541  | 251 |
 
 ## Installation on the host machine
 
