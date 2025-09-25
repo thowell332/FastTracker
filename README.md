@@ -111,7 +111,7 @@ Place both files into the `./pretrained/` directory.
 
 For **MOT16 benchmark**, you can use weights trained for MOT17 `bytetrack_x_mot17.pth.tar`. For the **FastTrack benchmark**, which includes multiple object classes beyond pedestrians, you need to retrain the YOLOX for multi-class detection. 
 
-The FastTrack benchmark uses the standard MOT format, where each `gt/gt.txt` file already provides frame-level detections with object class annotations. To train a detector:
+The FastTrack benchmark uses `frame, id, bb_left, bb_top, bb_width, bb_height, conf, class, 1.0` format which is similar to the standard MOT format (except that class is added and x,y,z coordinates are removed), where each `gt/gt.txt` file already provides frame-level detections with object class annotations. To train a detector:
 
 1. You **do not need to extract frames manually**—the frame-wise detections are already specified.
 2. Simply **ignore the track IDs** in `gt.txt`, as detector training requires only bounding boxes and class labels.
