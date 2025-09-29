@@ -97,8 +97,8 @@ python tools\\convert_mot16_to_coco.py
 python tools\\convert_mot17_to_coco.py 
 python tools\\convert_mot20_to_coco.py
 ```
-(For FastTracker benchmark use `convert_mot17_to_coco.py` to make annotations. There you need to change
-`DATA_PATH = 'datasets/mot'` line.)
+(For FastTracker benchmark use  [`convert_to_coco.py`](https://huggingface.co/datasets/Hamidreza-Hashemp/FastTracker-Benchmark/blob/main/convert_to_coco.py)
+to make annotations.
 
 ## Pretrained Weights
 
