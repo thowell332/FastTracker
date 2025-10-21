@@ -421,21 +421,7 @@ double FastTracker::lapjv(const vector<vector<float> > &cost, vector<int> &rowso
 
 	return opt;
 }
-// bool FastTracker::is_occluded_by(const vector<float>& box_a, const vector<float>& box_b, float iou_thresh ) {
-//     // box format: [x1, y1, x2, y2]
-//     float x1 = std::max(box_a[0], box_b[0]);
-//     float y1 = std::max(box_a[1], box_b[1]);
-//     float x2 = std::min(box_a[2], box_b[2]);
-//     float y2 = std::min(box_a[3], box_b[3]);
 
-//     float intersection = std::max(0.f, x2 - x1) * std::max(0.f, y2 - y1);
-//     float area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1]);
-
-//     if (area_a <= 0.f) return false;
-
-//     float overlap_ratio = intersection / area_a;
-//     return overlap_ratio > iou_thresh;
-// }
 bool FastTracker::is_occluded_by(const vector<float>& box_a, const vector<float>& box_b, float inclusion_thresh) {
     // box format: [x1, y1, x2, y2]
     float x1 = std::max(box_a[0], box_b[0]);
@@ -449,11 +435,12 @@ bool FastTracker::is_occluded_by(const vector<float>& box_a, const vector<float>
     if (area_a <= 0.f) return false;
 
     float inclusion_ratio = intersection / area_a;
-    return inclusion_ratio > inclusion_thresh;  // e.g. 0.6 → 60% of small box is inside
+    return inclusion_ratio > inclusion_thresh;  // e.g. 0.6 -> 60% of small box is inside
 }
 
 Scalar FastTracker::get_color(int idx)
 {
 	idx += 3;
 	return Scalar(37 * idx % 255, 17 * idx % 255, 29 * idx % 255);
+
 }
