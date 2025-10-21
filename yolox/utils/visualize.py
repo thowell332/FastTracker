@@ -48,7 +48,7 @@ def get_color(idx):
 
     return color
 
-def plot_tracking(image,  tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=None):
+def plot_tracking(image,  tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=None, roi_points=[]):
     im = np.ascontiguousarray(np.copy(image))
     
     im_h, im_w = im.shape[:2]
@@ -78,6 +78,21 @@ def plot_tracking(image,  tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=
         cv2.putText(im, id_text, (intbox[0], intbox[1]), cv2.FONT_HERSHEY_PLAIN, text_scale, (0, 0, 255),
                     thickness=text_thickness)
 
+    # === Draw ROI regions if provided ===
+    if roi_points:
+        for idx, roi in enumerate(roi_points):
+            try:
+                roi_int = np.array(roi, dtype=int)
+                # Clip to image boundaries
+                roi_int[:, 0] = np.clip(roi_int[:, 0], 0, im_w - 1)
+                roi_int[:, 1] = np.clip(roi_int[:, 1], 0, im_h - 1)
+                color = (0, 255, 255) if idx == 0 else (255, 150, 0)
+                cv2.polylines(im, [roi_int.reshape((-1, 1, 2))],
+                              isClosed=True, color=color, thickness=2)
+                cv2.putText(im, f'ROI-{idx+1}', tuple(roi_int[0]),
+                            cv2.FONT_HERSHEY_PLAIN, 1.8, color, 2)
+            except Exception as e:
+                print(f"[Warning] Failed to draw ROI-{idx+1}: {e}")
     return im
 
 def plot_tracking_calib(image, frame_calib, src_calib_data, target_calib_data, tlwhs, obj_ids, scores=None, frame_id=0, fps=0., ids2=None):

@@ -6,6 +6,7 @@ import copy
 import torch
 import torch.nn.functional as F
 import json
+import math
 
 from .kalman_filter import KalmanFilter
 from yolox.tracker import matching
@@ -211,6 +212,26 @@ class Fasttracker(object):
         self.dampen_motion_occ = config["dampen_motion_occ"]
         self.active_occ_to_lost_thresh = config["active_occ_to_lost_thresh"]
         self.init_iou_suppress = config["init_iou_suppress"]
+
+        # --- Dynamic ROI loading ---
+        self.roi_points = []
+        self.theta_values = []
+        rois = config.get("ROIs", {})
+
+        for name, pts in rois.items():
+            try:
+                roi_np = np.array(pts)
+                self.roi_points.append(roi_np)
+                theta = self.compute_theta(roi_np)
+                self.theta_values.append(theta)
+                print(f"[ROI] {name} loaded with theta = {theta:.2f} degrees.")
+            except Exception as e:
+                print(f"[Warning] Failed to load {name}: {e}")
+
+        self.roi_repair_max_gap = config.get("roi_repair_max_gap", 15)
+        self.dir_window_N = config.get("dir_window_N", 10)
+        self.dir_margin_deg = config.get("dir_margin_deg", 2.0)
+
         self.kalman_filter = KalmanFilter()
 
         # Print config in terminal
@@ -379,6 +400,14 @@ class Fasttracker(object):
             track.mark_lost()
             lost_stracks.append(track)
             
+        # After handling Stage-2 matches and updating tracks enforece environment constraints:
+        for t in activated_starcks:
+            self.enforce_environment_constraints(t)
+        for t in refind_stracks:
+            self.enforce_environment_constraints(t)
+        for t in self.tracked_stracks:
+            if t.state == TrackState.Tracked and t not in activated_starcks and t not in refind_stracks:
+                self.enforce_environment_constraints(t)
 
         """ Step 4: Init new stracks (with IoU suppression) """
         # Gather active tracks *now* (already-updated ones + still-tracked ones)
@@ -437,6 +466,235 @@ class Fasttracker(object):
 
         return output_stracks
 
+    def enforce_environment_constraints(self, t):
+        """
+        Enforce ROI containment and cone direction for a single track t.
+        Assumes t.tlwh exists and t.history (list of tlwh or centers) exists/updated per frame.
+        """
+        if not self.roi_points:
+            return
+
+        # Ensure we have a minimal trajectory history (store centers per frame)
+        if not hasattr(t, "center_history"):
+            t.center_history = []
+        curr_center = self._get_center_from_tlwh(t.tlwh)
+        t.center_history.append(curr_center.copy())
+
+        # 1) Determine which ROI contains the current center (if any)
+        roi_idx = -1
+        for i, roi in enumerate(self.roi_points):
+            if len(roi) >= 3 and self._point_in_polygon(curr_center, roi):
+                roi_idx = i
+                break
+        if roi_idx < 0:
+            # Not inside any ROI -> no constraint
+            return
+
+        roi = self.roi_points[roi_idx]
+
+        # ==========================================================
+        # ROI History Repair: if the track is currently inside ROI,
+        # but had a short out-of-ROI excursion in the past few frames,
+        # project those out-of-bound points back onto the ROI boundary.
+        # ==========================================================
+
+        if self._point_in_polygon(curr_center, roi):
+            # Track is inside ROI -> check its recent history
+            if len(t.center_history) > 2:
+                last_inside_idx = None
+                last_outside_idx = None
+
+                # Iterate backward through history to find last in/out transitions
+                for i in range(len(t.center_history) - 2, -1, -1):
+                    pt = t.center_history[i]
+                    inside = self._point_in_polygon(pt, roi)
+
+                    if inside and last_outside_idx is not None:
+                        # Found transition from outside -> inside
+                        last_inside_idx = i
+                        break
+                    if not inside and last_outside_idx is None:
+                        # First time we see an outside segment
+                        last_outside_idx = i
+
+                # If we found an out-of-ROI segment that ended recently
+                if last_outside_idx is not None and last_inside_idx is not None:
+                    gap = last_outside_idx - last_inside_idx
+                    if 0 < gap <= self.roi_repair_max_gap:
+                        # Repair the short outside segment
+                        for j in range(last_inside_idx + 1, last_outside_idx + 1):
+                            pt_out = t.center_history[j]
+                            # Clamp each point back to the ROI boundary
+                            clamped_point = self._clamp_point_to_polygon(pt_out, roi)
+
+                            # Update both geometric and KF mean history
+                            t.center_history[j] = clamped_point
+                            if hasattr(t, "mean_history") and j < len(t.mean_history):
+                                t.mean_history[j][:2] = clamped_point
+
+                        # Update the track’s current center (last frame)
+                        curr_center = t.center_history[-1]
+                        x, y, w, h = t.tlwh
+                        new_x = curr_center[0] - 0.5 * w
+                        new_y = curr_center[1] - 0.5 * h
+                        t.mean[0:2] = np.array([new_x, new_y], dtype=float)
+
+                        print(f"[ROI-Repair] Track {t.track_id}: repaired short excursion ({gap} frames).")
+
+        # 2) Direction cone enforcement
+        if len(roi) == 4:
+            axis_u, theta_deg = self._cone_axis_and_theta(roi)
+        else:
+            # If not a quad, skip direction constraint
+            return
+
+        N = self.dir_window_N
+        if len(t.center_history) >= (N + 1):
+            pk   = t.center_history[-1]
+            pk_N = t.center_history[-1 - N]
+            delta = pk - pk_N
+            if np.linalg.norm(delta) > 1e-6:
+                # Compare phi vs theta/2 -> if violated, rotate last step to boundary
+                prev = t.center_history[-2]
+                adjusted = self._clamp_to_cone(pk_N, pk, axis_u, theta_deg)
+                if not np.allclose(adjusted, pk, atol=1e-3):
+                    # Apply adjusted position
+                    t.center_history[-1] = adjusted
+                    if hasattr(t, "mean_history") and len(t.mean_history) > 0:
+                        t.mean_history[-1][:2] = adjusted
+                    # Reflect to tlwh (keep size; shift position)
+                    x, y, w, h = t.tlwh
+                    new_x = adjusted[0] - 0.5*w
+                    new_y = adjusted[1] - 0.5*h
+                    # t.tlwh = np.array([new_x, new_y, w, h], dtype=float)
+                    t.mean[0:2] = np.array([new_x, new_y], dtype=float)
+
+    @staticmethod
+    def compute_theta(roi):
+        """
+        Computes the opening angle theta of the direction cone from four ROI points.
+        ROI assumed to be ordered as [(E1), (E2), (O2), (O1)].
+        """
+        E1, E2, O2, O1 = roi
+        v1 = np.array(O2) - np.array(E1)
+        v2 = np.array(O1) - np.array(E2)
+        dot = np.dot(v1, v2)
+        denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+        theta = np.degrees(np.arccos(np.clip(dot / denom, -1.0, 1.0)))
+        return theta
+    
+    @staticmethod
+    def _get_center_from_tlwh(tlwh):
+        x, y, w, h = tlwh
+        return np.array([x + 0.5*w, y + 0.5*h], dtype=float)
+
+    @staticmethod
+    def _point_in_polygon(pt, poly):
+        """Ray casting; poly shape (M,2). Returns True if inside or on boundary."""
+        x, y = pt
+        inside = False
+        n = len(poly)
+        for i in range(n):
+            x1, y1 = poly[i]
+            x2, y2 = poly[(i + 1) % n]
+            # Check intersection with horizontal ray
+            cond = ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / ( (y2 - y1) + 1e-9 ) + x1)
+            if cond:
+                inside = not inside
+        return inside
+
+    @staticmethod
+    def _closest_point_on_segment(p, a, b):
+        """Project point p to segment ab, return closest point."""
+        ap = p - a
+        ab = b - a
+        t = np.dot(ap, ab) / (np.dot(ab, ab) + 1e-9)
+        t = max(0.0, min(1.0, t))
+        return a + t * ab
+
+    @classmethod
+    def _clamp_point_to_polygon(cls, pt, poly):
+        """Clamp point to nearest point on polygon boundary."""
+        best = None
+        best_d2 = 1e18
+        n = len(poly)
+        for i in range(n):
+            a = poly[i].astype(float)
+            b = poly[(i + 1) % n].astype(float)
+            q = cls._closest_point_on_segment(pt, a, b)
+            d2 = np.sum((q - pt)**2)
+            if d2 < best_d2:
+                best_d2 = d2
+                best = q
+        return best if best is not None else pt
+
+    @staticmethod
+    def _normalize(v):
+        n = np.linalg.norm(v)
+        return v / (n + 1e-9)
+
+    @staticmethod
+    def _angle_of(vec):
+        """Angle of vector in radians (−pi, pi]."""
+        return math.atan2(vec[1], vec[0])
+
+    @staticmethod
+    def _angle_diff(a, b):
+        """Smallest signed angle a−b in radians (−pi, pi]."""
+        d = (a - b + math.pi) % (2*math.pi) - math.pi
+        return d
+
+    @staticmethod
+    def _cone_axis_and_theta(roi):
+        """From four ROI points [(E1),(E2),(O2),(O1)] get cone axis unit vector and theta (degrees)."""
+        E1, E2, O2, O1 = roi
+        v1 = Fasttracker._normalize(np.array(O2) - np.array(E1))
+        v2 = Fasttracker._normalize(np.array(O1) - np.array(E2))
+        axis = Fasttracker._normalize(v1 + v2)  # average direction
+        dot = float(np.clip(np.dot(v1, v2), -1.0, 1.0))
+        theta = math.degrees(math.acos(dot))    # opening angle
+        return axis, theta
+
+    def _clamp_to_cone(self, anchor_pt, curr_pt, axis_u, theta_deg):
+        """
+        Enforce a direction cone centered on 'axis_u' with opening angle 'theta_deg'.
+        If the displacement delta = curr_pt - anchor_pt deviates beyond theta/2 from axis_u,
+        clamp delta to the nearest cone boundary while preserving its magnitude.
+        Returns the adjusted current point.
+        """
+        delta = np.asarray(curr_pt, dtype=float) - np.asarray(anchor_pt, dtype=float)
+        mag = np.linalg.norm(delta)
+        if mag < 3.0: # configurable
+            return curr_pt  # no displacement, nothing to adjust
+
+        # Normalize vectors
+        delta_u = delta / mag
+        axis_u  = self._normalize(np.asarray(axis_u, dtype=float))
+
+        # Angle between delta and axis_u (0..pi)
+        cosang = float(np.clip(np.dot(delta_u, axis_u), -1.0, 1.0))
+        ang = math.acos(cosang)
+        half = math.radians(theta_deg) * 0.5
+
+        if ang <= half:
+            # Already within cone
+            return curr_pt
+
+        # Determine which side to clamp to (sign via 2D cross product z-component)
+        cross_z = axis_u[0] * delta_u[1] - axis_u[1] * delta_u[0]
+        sign = 1.0 if cross_z > 0 else -1.0  # +half on left side, -half on right side
+
+        # Build the boundary direction by rotating axis_u by -+half
+        c, s = math.cos(sign * half), math.sin(sign * half)
+
+        # Rotation matrix R(theta/2) = [ [c -s], [s  c] ]
+        # rotate axis_u by this matrix to get boundary direction
+        boundary_dir = np.array([axis_u[0]*c - axis_u[1]*s, axis_u[0]*s + axis_u[1]*c], dtype=float)
+
+        # Preserve the magnitude of delta
+        # New point = pk_N + boundary_dir * |mag|
+        clamped = np.asarray(anchor_pt, dtype=float) + boundary_dir * mag
+        return clamped
 
 def joint_stracks(tlista, tlistb):
     exists = {}

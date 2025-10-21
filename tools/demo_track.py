@@ -122,6 +122,17 @@ def load_or_init_config(args):
             "dampen_motion_occ": 0.85,
             "active_occ_to_lost_thresh": 15,
             "init_iou_suppress": 0.8,
+
+            # Environment geometry (two ROIs)
+            # "ROIs": {
+            #     "roi_1_points": [[312, 196], [422, 188], [1399, 694], [152, 697]],
+            #     "roi_2_points": [[774, 407], [1541, 382], [614, 163], [498, 176]]
+            # },
+
+            "roi_repair_max_gap": 15,   # frames: only repair short out-of-ROI excursions
+            "dir_window_N": 10,         # frames: window to estimate motion direction
+            "dir_margin_deg": 2.0       # degrees: tolerance when comparing phi against theta/2
+            
         }
 
     return run_config
@@ -246,7 +257,7 @@ def image_demo(predictor, vis_folder, current_time, args):
                     )
             timer.toc()
             online_im = plot_tracking(
-                img_info['raw_img'], online_tlwhs, online_ids, frame_id=frame_id, fps=1. / timer.average_time
+                img_info['raw_img'], online_tlwhs, online_ids, frame_id=frame_id, fps=1. / timer.average_time, roi_points=getattr(tracker, "roi_points", [])  # safe access
             )
         else:
             timer.toc()
@@ -325,7 +336,7 @@ def imageflow_demo(predictor, vis_folder, current_time, args):
                         )
                 timer.toc()
                 online_im = plot_tracking(
-                    img_info['raw_img'], online_tlwhs, online_ids, frame_id=frame_id + 1, fps=1. / timer.average_time
+                    img_info['raw_img'], online_tlwhs, online_ids, frame_id=frame_id + 1, fps=1. / timer.average_time, roi_points=getattr(tracker, "roi_points", [])  # safe access
                 )
             else:
                 timer.toc()
