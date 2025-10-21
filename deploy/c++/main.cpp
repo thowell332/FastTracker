@@ -12,7 +12,7 @@
 void make_dir_if_not_exist(const std::string& path) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) {
-        mkdir(path.c_str(), 0755); // rwxr-xr-x
+        mkdir(path.c_str(), 0755); 
     }
 }
 
@@ -126,7 +126,7 @@ int main() {
 
         if (current_frame == -1) current_frame = frame_id;
 
-        // When frame changes → process previous frame
+        // When frame changes -> process previous frame
         if (frame_id != current_frame) {
             process_frame(current_frame, frame_objects);
             frame_objects.clear();
