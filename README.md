@@ -19,6 +19,15 @@
 </div>
 
 FastTracker is a general-purpose multi-object tracking framework designed for complex traffic scenes. FastTracker supports diverse object types—especially vehicles—and maintains identity through heavy occlusion and complex motion. It combines an occlusion-aware re-identification module with road-structure-aware tracklet refinement, using semantic priors like lanes and crosswalks for better trajectory accuracy. _[Hamidreza Hashempoor](https://hamidreza-hashempoor.github.io/),  Yu Dong Hwang_.
+
+##  Updates
+
+| Date | Update |
+|------|---------|
+| **2025-10-21** |  Added C++ deployment version (FastTracker_CPP). |
+| **2025-10-21** |  Added ROI and Cone handling functions source codes. |
+
+
 ## Resources
 | Huggingface Dataset | Paper |
 |:-----------------:|:-------:|
@@ -332,4 +341,5 @@ If you use our code or Benchmark, please cite our work.
 
 ## Acknowledgement
 Our work is built upon [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX), [ByteTrack](https://github.com/FoundationVision/ByteTrack/tree/main), [TransTrack](https://github.com/PeizeSun/TransTrack) and [TrackEval](https://github.com/JonathonLuiten/TrackEval). Highly appreciated!
+
 
