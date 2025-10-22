@@ -217,6 +217,19 @@ Number of frames an occluded object can remain unmatched before being marked as 
 * `init_iou_suppress`:
 IOU suppression threshold used to avoid initializing duplicate tracks from overlapping detections.
 
+* `ROIs`:
+Defines all Regions of Interest (ROIs) in the scene, each described by a polygon of corner points in pixel coordinates.
+
+* `roi_repair_max_gap`:
+Maximum number of frames a track can disappear within an ROI before it’s considered broken and needs re-initialization.
+
+* `dir_window_N`:
+Sliding window length (in frames) for estimating object motion direction stability.
+
+* `dir_margin_deg`:
+Angular tolerance (in degrees) allowed when comparing direction estimates — smaller values enforce stricter direction consistency.
+
+
 ### 📦 Output Structure 
 After running each .sh file (e.g., `run_mot17.sh` or `run_mot20.sh`), the full set of tracking results will be saved in:
 ```shell
@@ -309,6 +322,9 @@ python tools/GSI.py \
 
 This post-processing step is optional and meant for offline use only — it is not applicable in real-time systems.
 
+## Deployment
+
+* Deployment for C++ application is added. Refer to `deployc/c++`.
 ## Demo
 
 
@@ -341,5 +357,6 @@ If you use our code or Benchmark, please cite our work.
 
 ## Acknowledgement
 Our work is built upon [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX), [ByteTrack](https://github.com/FoundationVision/ByteTrack/tree/main), [TransTrack](https://github.com/PeizeSun/TransTrack) and [TrackEval](https://github.com/JonathonLuiten/TrackEval). Highly appreciated!
+
 
 
