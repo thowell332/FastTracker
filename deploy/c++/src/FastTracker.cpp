@@ -4,12 +4,26 @@
 
 FastTracker::FastTracker(int frame_rate, int track_buffer)
 {
-	track_thresh = 0.6;
+	// track_thresh = 0.1;
+	// high_thresh = 0.8;
+	// match_thresh = 0.85;
+	// low_match_thresh = 0.5;
+	// unconfirmed_threshold = 0.7;
+
+	track_thresh = 0.5;
 	high_thresh = 0.8;
 	match_thresh = 0.85;
+	low_match_thresh = 0.5;
+	unconfirmed_threshold = 0.7;
+
+	Beta_enlarge = 1.44f;
+	Dampen_factor = 0.8f;
+	T_occ = 40;
+	T_recent_occ = 40;
+	reset_vel_offset = 10;
+	reset_pos_offset = 3;
 
 	frame_id = 0;
-	// max_time_lost = int(frame_rate / 30.0 * track_buffer);
 	max_time_lost = int( track_buffer);
 	cout << "Init Fast!" << endl;
 }
@@ -129,7 +143,7 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 	matches.clear();
 	u_track.clear();
 	u_detection.clear();
-	linear_assignment(dists, dist_size, dist_size_size, 0.5, matches, u_track, u_detection);
+	linear_assignment(dists, dist_size, dist_size_size, low_match_thresh, matches, u_track, u_detection);
 
 	for (int i = 0; i < matches.size(); i++)
 	{
@@ -172,7 +186,6 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 					track->was_recently_occluded = true;
 
 					// Reset velocity
-					int reset_vel_offset = 10;
 					if (track->mean_history.size() >= reset_vel_offset) {
 						const KAL_MEAN& old_mean = track->mean_history[track->mean_history.size() - reset_vel_offset];
 						track->mean[4] = old_mean[4];
@@ -182,7 +195,6 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 					}
 
 					// Reset pos
-					int reset_pos_offset = 3;
 					if (track->mean_history.size() >= reset_pos_offset) {
 						const KAL_MEAN& old_mean = track->mean_history[track->mean_history.size() - reset_pos_offset];
 						track->mean[0] = old_mean[0];
@@ -193,15 +205,15 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 
 					// Enlarge once
 					if (track->occluded_len == 1) {
-						track->mean[3] *= 1.44f;  // increase height → indirectly increases width too
+						track->mean[3] *= Beta_enlarge;  // increase height -> indirectly increases width too
 
 						track->static_tlwh();
 						track->static_tlbr();
 					}
 
 					// Dampen motion
-					track->mean[4] *= 0.8f;
-					track->mean[5] *= 0.8f;
+					track->mean[4] *= Dampen_factor;
+					track->mean[5] *= Dampen_factor;
 					track->mean[6] *= 0.0f;
 					track->mean[7] *= 0.0f;
 					break;
@@ -216,14 +228,14 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 		else{
 			track->occluded_len += 1;
 		}
-		if (track->was_recently_occluded && (frame_id - track->last_occluded_frame > 40)) {
+		if (track->was_recently_occluded && (frame_id - track->last_occluded_frame > T_recent_occ)) {
 			track->was_recently_occluded = false;
 		}
 
 		//
 		if (track->state != TrackState::Lost) {
 			if (track->not_matched > 2 &&   // Give 2 frame change to all not matched object to be active, before being lost
-	    		(!track->is_occluded || track->occluded_len > 60))  // Give 60 frames chance for occ tracking
+	    		(!track->is_occluded || track->occluded_len > T_occ))  // Give T_occ frames chance for occ tracking
 			{
 				track->mark_lost();
 				lost_stracks.push_back(*track);
@@ -241,7 +253,7 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 	matches.clear();
 	vector<int> u_unconfirmed;
 	u_detection.clear();
-	linear_assignment(dists, dist_size, dist_size_size, 0.7, matches, u_unconfirmed, u_detection);
+	linear_assignment(dists, dist_size, dist_size_size, unconfirmed_threshold, matches, u_unconfirmed, u_detection);
 
 	for (int i = 0; i < matches.size(); i++)
 	{
@@ -252,8 +264,6 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 	for (int i = 0; i < u_unconfirmed.size(); i++)
 	{
 		STrack *track = unconfirmed[u_unconfirmed[i]];
-		// track->mark_removed();
-		// removed_stracks.push_back(*track);
 		track->mark_lost(); // Allow to be recovered later
 		lost_stracks.push_back(*track);
 	}
@@ -262,7 +272,8 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 	for (int i = 0; i < u_detection.size(); i++)
 	{
 		STrack *track = &detections[u_detection[i]];
-		if (track->score < this->high_thresh)
+		// if (track->score < this->high_thresh)
+		if (track->score < this->track_thresh)
 			continue;
 		track->activate(this->kalman_filter, this->frame_id);
 		activated_stracks.push_back(*track);
@@ -274,7 +285,7 @@ vector<STrack> FastTracker::update(const vector<Object>& objects)
 
 		// Extend lifetime if recently occluded
 		bool recently_occluded = (t.was_recently_occluded &&
-								(this->frame_id - t.last_occluded_frame <= 40));  // allow 40 extra frames for occluded object to rematch
+								(this->frame_id - t.last_occluded_frame <= T_recent_occ));  // allow T_recent_occ extra frames for occluded object to rematch
 
 		if (!recently_occluded &&
 			(this->frame_id - t.end_frame() > this->max_time_lost)) {

@@ -12,7 +12,7 @@
 void make_dir_if_not_exist(const std::string& path) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) {
-        mkdir(path.c_str(), 0755); 
+        mkdir(path.c_str(), 0755); // rwxr-xr-x
     }
 }
 
@@ -75,27 +75,50 @@ int main() {
             return;
         }
 
-        // Draw all tracks
+
+        for (const auto& det : objs) {
+            Rect det_rect(
+                int(det.rect.x),
+                int(det.rect.y),
+                int(det.rect.width),
+                int(det.rect.height)
+            );
+            rectangle(frame, det_rect, Scalar(0, 0, 255), 1); // red, thin box
+        }
+
+
         for (const auto& t : tracks) {
-            Rect rect(
+            Rect track_rect(
                 int(t.tlwh[0]),
                 int(t.tlwh[1]),
                 int(t.tlwh[2]),
                 int(t.tlwh[3])
             );
             Scalar color = tracker.get_color(t.track_id);
-            rectangle(frame, rect, color, 2);
+            rectangle(frame, track_rect, color, 2);
 
             string label = "ID " + to_string(t.track_id);
             int baseline = 0;
             Size textSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
-            rectangle(frame, Point(rect.x, rect.y - textSize.height - 4),
-                      Point(rect.x + textSize.width, rect.y), color, FILLED);
-            putText(frame, label, Point(rect.x, rect.y - 2),
+            rectangle(frame, Point(track_rect.x, track_rect.y - textSize.height - 4),
+                    Point(track_rect.x + textSize.width, track_rect.y), color, FILLED);
+            putText(frame, label, Point(track_rect.x, track_rect.y - 2),
                     FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 0), 1);
         }
 
-        // Save to output folder
+
+        int num_dets = static_cast<int>(objs.size());
+        int num_tracks = static_cast<int>(tracks.size());
+        string info_text = "Frame: " + to_string(frame_id) +
+                        " | Detections: " + to_string(num_dets) +
+                        " | Tracklets: " + to_string(num_tracks);
+
+        putText(frame, info_text, Point(15, 30), FONT_HERSHEY_SIMPLEX,
+                0.7, Scalar(255, 255, 255), 2, LINE_AA);
+        putText(frame, info_text, Point(15, 30), FONT_HERSHEY_SIMPLEX,
+                0.7, Scalar(0, 0, 0), 1, LINE_AA); // black shadow
+
+
         string out_path = out_dir + "/" + to_string(frame_id) + ".jpg";
         imwrite(out_path, frame);
     };
@@ -126,7 +149,7 @@ int main() {
 
         if (current_frame == -1) current_frame = frame_id;
 
-        // When frame changes -> process previous frame
+        // When frame changes → process previous frame
         if (frame_id != current_frame) {
             process_frame(current_frame, frame_objects);
             frame_objects.clear();

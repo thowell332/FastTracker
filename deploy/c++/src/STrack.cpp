@@ -53,7 +53,7 @@ void STrack::activate(fast_kalman::KalmanFilter &kalman_filter, int frame_id)
 	{
 		this->is_activated = true;
 	}
-	//this->is_activated = true;
+	this->is_activated = true;
 	this->frame_id = frame_id;
 	this->start_frame = frame_id;
 }

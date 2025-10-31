@@ -40,6 +40,15 @@ private:
 	float track_thresh;
 	float high_thresh;
 	float match_thresh;
+	float low_match_thresh;
+	float unconfirmed_threshold;
+	float Beta_enlarge;
+	float Dampen_factor;
+	int T_occ;
+	int reset_vel_offset;
+	int reset_pos_offset;
+	int T_recent_occ;
+
 	int frame_id;
 	int max_time_lost;
 
