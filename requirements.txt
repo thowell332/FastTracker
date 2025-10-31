@@ -1,11 +1,12 @@
 # TODO: Update with exact module version
-numpy
-torch>=1.7
-opencv_python
+numpy==1.26.4
+torch==2.1.0+cu118
+torchvision==0.16.0+cu118
+torchaudio==2.1.0+cu118
+opencv-python==4.9.0.80
 loguru
 scikit-image
 tqdm
-torchvision>=0.10.0
 Pillow
 thop
 ninja
