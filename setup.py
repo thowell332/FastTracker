@@ -5,14 +5,17 @@ import re
 import setuptools
 import glob
 from os import path
-import torch
-from torch.utils.cpp_extension import CppExtension
-
-torch_ver = [int(x) for x in torch.__version__.split(".")[:2]]
-assert torch_ver >= [1, 3], "Requires PyTorch >= 1.3"
 
 
 def get_extensions():
+    # Import torch only when actually building extensions
+    # This allows the setup.py to be imported for requirement discovery
+    import torch
+    from torch.utils.cpp_extension import CppExtension
+    
+    torch_ver = [int(x) for x in torch.__version__.split(".")[:2]]
+    assert torch_ver >= [1, 3], "Requires PyTorch >= 1.3"
+    
     this_dir = path.dirname(path.abspath(__file__))
     extensions_dir = path.join(this_dir, "yolox", "layers", "csrc")
 
@@ -51,14 +54,35 @@ with open("README.md", "r") as f:
     long_description = f.read()
 
 
+def get_cmdclass():
+    """Get cmdclass with torch BuildExtension, importing torch only when needed."""
+    try:
+        import torch
+        from torch.utils.cpp_extension import BuildExtension
+        return {"build_ext": BuildExtension}
+    except ImportError:
+        return {}
+
+
+# Only build extensions if torch is available
+# This allows setup.py to be parsed even when torch isn't installed yet
+try:
+    extensions = get_extensions()
+    cmdclass = get_cmdclass()
+except ImportError:
+    # If torch is not available, skip extensions for now
+    # User must install torch first before running setup.py
+    extensions = []
+    cmdclass = {}
+
 setuptools.setup(
     name="yolox",
     version=version,
     author="basedet team",
     python_requires=">=3.6",
     long_description=long_description,
-    ext_modules=get_extensions(),
+    ext_modules=extensions,
     classifiers=["Programming Language :: Python :: 3", "Operating System :: OS Independent"],
-    cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
+    cmdclass=cmdclass,
     packages=setuptools.find_namespace_packages(),
 )

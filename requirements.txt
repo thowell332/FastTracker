@@ -1,9 +1,10 @@
 # TODO: Update with exact module version
-numpy==1.26.4
-torch==2.1.0+cu118
-torchvision==0.16.0+cu118
-torchaudio==2.1.0+cu118
-opencv-python==4.9.0.80
+# Note: PyTorch with CUDA must be installed separately using:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For CPU-only: pip install torch torchvision torchaudio
+
+numpy>=1.21.0,<1.27.0
+opencv-python>=4.5.0
 loguru
 scikit-image
 tqdm
@@ -21,8 +22,8 @@ matplotlib
 
 
 
-# cython
-# pycocotools==2.0.2
+cython
+pycocotools>=2.0.0
 # verified versions
 # onnx==1.8.1
 # onnxruntime==1.8.0

@@ -136,12 +136,25 @@ class MOTEvaluator:
         track_time = 0
         n_samples = len(self.dataloader) - 1
         
-        if self.args.occ:
-            print("[Fast]: Enabled.")
-            tracker = Fasttracker(self.args, self.config)
-        else:
-            tracker = BYTETracker(self.args)
+        # Initialize default values from config
         ori_thresh = self.args.track_thresh
+        default_track_buffer = self.config.get("track_buffer", 30)
+        default_track_thresh = self.config.get("track_thresh", ori_thresh)
+        sequence_config = self.config.get("sequence_config", {})
+        
+        # Log config information
+        logger.info(f"[CONFIG] Default track_buffer: {default_track_buffer}, Default track_thresh: {default_track_thresh}")
+        if sequence_config:
+            logger.info(f"[CONFIG] Found {len(sequence_config)} sequence-specific configs:")
+            for seq_name, seq_cfg in sequence_config.items():
+                logger.info(f"  {seq_name}: track_buffer={seq_cfg.get('track_buffer', 'default')}, "
+                          f"track_thresh={seq_cfg.get('track_thresh', 'default')}")
+        else:
+            logger.info("[CONFIG] No sequence-specific configs found")
+        
+        # Initialize tracker variable (will be created at start of first sequence)
+        tracker = None
+        
         for cur_iter, (imgs, _, info_imgs, ids) in enumerate(
             progress_bar(self.dataloader)
         ):
@@ -151,33 +164,44 @@ class MOTEvaluator:
                 video_id = info_imgs[3].item()
                 img_file_name = info_imgs[4]
                 video_name = img_file_name[0].split('/')[0]
-                if video_name == 'MOT17-05-FRCNN' or video_name == 'MOT17-06-FRCNN':
-                    self.args.track_buffer = 14
-                elif video_name == 'MOT17-13-FRCNN' or video_name == 'MOT17-14-FRCNN':
-                    self.args.track_buffer = 25
-                else:
-                    self.args.track_buffer = 30
-
-                if video_name == 'MOT17-01-FRCNN':
-                    self.args.track_thresh = 0.65
-                elif video_name == 'MOT17-06-FRCNN':
-                    self.args.track_thresh = 0.65
-                elif video_name == 'MOT17-12-FRCNN':
-                    self.args.track_thresh = 0.7
-                elif video_name == 'MOT17-14-FRCNN':
-                    self.args.track_thresh = 0.67
-                elif video_name in ['MOT20-06', 'MOT20-08']:
-                    self.args.track_thresh = 0.3
-                else:
-                    self.args.track_thresh = ori_thresh
-
+                
                 if video_name not in video_names:
                     video_names[video_id] = video_name
+                    
+                # Apply sequence-specific config at the start of each sequence (frame_id == 1)
                 if frame_id == 1:
+                    # Apply sequence-specific config if available, otherwise use defaults
+                    if video_name in sequence_config:
+                        seq_cfg = sequence_config[video_name]
+                        # Update track_buffer if specified for this sequence, else use default
+                        new_track_buffer = seq_cfg.get("track_buffer", default_track_buffer)
+                        # Update track_thresh if specified for this sequence, else use default
+                        new_track_thresh = seq_cfg.get("track_thresh", default_track_thresh)
+                        
+                        # Update both args (for BYTETracker) and config (for Fasttracker)
+                        self.args.track_buffer = new_track_buffer
+                        self.args.track_thresh = new_track_thresh
+                        self.config["track_buffer"] = new_track_buffer
+                        self.config["track_thresh"] = new_track_thresh
+                        
+                        logger.info(f"[SEQUENCE {video_name}] Using sequence-specific config: "
+                                  f"track_buffer={new_track_buffer}, track_thresh={new_track_thresh}")
+                    else:
+                        # Use default values from config
+                        self.args.track_buffer = default_track_buffer
+                        self.args.track_thresh = default_track_thresh
+                        self.config["track_buffer"] = default_track_buffer
+                        self.config["track_thresh"] = default_track_thresh
+                        logger.info(f"[SEQUENCE {video_name}] Using default config: "
+                                  f"track_buffer={default_track_buffer}, track_thresh={default_track_thresh}")
+                    
+                    # Create new tracker with updated parameters for this sequence
                     if self.args.occ:
                         tracker = Fasttracker(self.args, self.config)
                     else:
                         tracker = BYTETracker(self.args)
+                    
+                    # Save results from previous sequence if any
                     if len(results) != 0:
                         result_filename = os.path.join(result_folder, '{}.txt'.format(video_names[video_id - 1]))
                         write_results(result_filename, results)
@@ -423,6 +447,13 @@ class MOTEvaluator:
         # Evaluate the Dt (detection) json comparing with the ground truth
         if len(data_dict) > 0:
             cocoGt = self.dataloader.dataset.coco
+            # Ensure COCO dataset has 'info' field (required by pycocotools.loadRes)
+            if 'info' not in cocoGt.dataset:
+                cocoGt.dataset['info'] = {
+                    'description': 'MOT Dataset',
+                    'version': '1.0',
+                    'year': 2024,
+                }
             # TODO: since pycocotools can't process dict in py36, write data to json file.
             _, tmp = tempfile.mkstemp()
             json.dump(data_dict, open(tmp, "w"))

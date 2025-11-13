@@ -16,5 +16,34 @@
     },
     "roi_repair_max_gap": 15,   
     "dir_window_N": 10,         
-    "dir_margin_deg": 2.0       
+    "dir_margin_deg": 2.0,
+
+    "sequence_config": {
+        "MOT17-01-FRCNN": {
+            "track_thresh": 0.65
+        },
+        "MOT17-05-FRCNN": {
+            "track_buffer": 14
+        },
+        "MOT17-06-FRCNN": {
+            "track_buffer": 14,
+            "track_thresh": 0.65
+        },
+        "MOT17-12-FRCNN": {
+            "track_thresh": 0.7
+        },
+        "MOT17-13-FRCNN": {
+            "track_buffer": 25
+        },
+        "MOT17-14-FRCNN": {
+            "track_buffer": 25,
+            "track_thresh": 0.67
+        },
+        "MOT20-06": {
+            "track_thresh": 0.3
+        },
+        "MOT20-08": {
+            "track_thresh": 0.3
+        }
+    }
 }

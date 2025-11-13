@@ -69,10 +69,11 @@ Steps: Setup the environment
 cd <home>
 conda create --name FastTracker python=3.9
 conda activate FastTracker
-pip3 install -r requirements.txt  # Ignore the errors
+pip3 install -r requirements.txt
+# Install PyTorch with CUDA 11.8 support BEFORE running setup.py (required by setup.py)
+pip3 install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+# For CPU-only: pip3 install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0
 python setup.py develop
-pip3 install cython
-conda install -c conda-forge pycocotools
 pip3 install cython_bbox
 ```
 
@@ -134,13 +135,62 @@ This enables FastTracker to detect and track multiple object types effectively i
 
 Run FastTracker:
 
-To evaluate **FastTracker** on the **MOT17 benchmark** and **MOT20 benchmark**, simply run the following command:
+### Using YOLOX Detector (Default)
+
+To evaluate **FastTracker** on the **MOT17 benchmark** and **MOT20 benchmark** with YOLOX detector, simply run the following command:
 
 ```bash
 bash run_mot17.sh
 bash run_mot20.sh
 ```
 For  **MOT16 benchmark** and **FatTracker benchmark**, you can use `bash run_mot17.sh`, but need to change the weight directory, experiment name and experiment file.
+
+### Using Public Detections
+
+To run **FastTracker** with public detections (no YOLOX detector needed), use the `track_public.py` script:
+
+**Option 1: Using the shell script (easiest)**
+```bash
+# Edit run_public_detections.sh to set DATASET, SPLIT, and CONFIG_FILE
+bash run_public_detections.sh
+```
+
+**Option 2: Using Python directly**
+```bash
+# Run on MOT17 train split with default config (only FRCNN sequences by default)
+python tools/track_public.py --dataset MOT17 --split train --result_folder track_results_public
+
+# Run on MOT17 train split processing only FRCNN sequences (explicit)
+python tools/track_public.py --dataset MOT17 --split train --detector_type FRCNN --result_folder track_results_public
+
+# Run on MOT20 train split with custom config (MOT20 has no detector subtypes)
+python tools/track_public.py --dataset MOT20 --split train --config configs/004_default.json --result_folder track_results_public
+
+# Run on a specific sequence
+python tools/track_public.py --dataset MOT17 --split train --seq MOT17-02-FRCNN --result_folder track_results_public
+
+# Process all detector types (FRCNN, DPM, SDP) - not recommended for MOT17
+python tools/track_public.py --dataset MOT17 --split train --detector_type all --result_folder track_results_public
+
+# Override config parameters
+python tools/track_public.py --dataset MOT17 --split train --track_thresh 0.6 --track_buffer 30 --match_thresh 0.9
+```
+
+**Arguments:**
+- `--dataset`: Dataset name (MOT17 or MOT20)
+- `--split`: Dataset split (train or val_half)
+- `--config`: Path to JSON config file (optional, uses defaults if not provided)
+- `--result_folder`: Folder to save tracking results
+- `--seq`: Specific sequence to process (optional, processes all if not specified)
+- `--detector_type`: Detector type to process (FRCNN, DPM, SDP, or all). Default: FRCNN
+  - For MOT17, use FRCNN to avoid duplicate processing (all detector types use the same images)
+  - For MOT20, this option is ignored (MOT20 doesn't have detector subtypes)
+- `--track_thresh`, `--track_buffer`, `--match_thresh`, `--min_box_area`: Override config parameters
+- `--conf_thresh`: Confidence threshold for filtering detections (default: 0.01)
+
+**Note:** Public detections are loaded from `datasets/<DATASET>/<split>/<sequence>/det/det.txt` (or `det_val_half.txt` for val_half split).
+
+**Tip:** For MOT17, use `--detector_type FRCNN` to process only FRCNN sequences, as all three detector types (FRCNN, DPM, SDP) use the same images. This saves processing time.
 
 ### ⚙️ Understanding `run_mot17.sh` and `run_mot20.sh` Configuration:
 

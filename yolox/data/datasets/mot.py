@@ -20,6 +20,7 @@ class MOTDataset(Dataset):
         name="train",
         img_size=(608, 1088),
         preproc=None,
+        detector_type=None,
     ):
         """
         COCO dataset initialization. Annotation data are read into memory by COCO API.
@@ -29,15 +30,32 @@ class MOTDataset(Dataset):
             name (str): COCO data name (e.g. 'train2017' or 'val2017')
             img_size (int): target image size after pre-processing
             preproc: data augmentation strategy
+            detector_type (str): Filter by detector type (e.g., 'FRCNN', 'DPM', 'SDP'). 
+                                 If None, includes all detector types. Default: None
         """
         super().__init__(img_size)
         if data_dir is None:
             data_dir = os.path.join(get_yolox_datadir(), "mot")
         self.data_dir = data_dir
         self.json_file = json_file
+        self.detector_type = detector_type
 
         self.coco = COCO(os.path.join(self.data_dir, "annotations", self.json_file))
         self.ids = self.coco.getImgIds()
+        
+        # Filter by detector type if specified
+        if detector_type is not None:
+            filtered_ids = []
+            for img_id in self.ids:
+                im_ann = self.coco.loadImgs(img_id)[0]
+                file_name = im_ann.get("file_name", "")
+                # Extract detector type from file_name (e.g., "MOT17-02-FRCNN/img1/000001.jpg" -> "FRCNN")
+                if detector_type in file_name:
+                    filtered_ids.append(img_id)
+            self.ids = filtered_ids
+            if len(self.ids) == 0:
+                raise ValueError(f"No images found with detector type '{detector_type}'")
+        
         self.class_ids = sorted(self.coco.getCatIds())
         cats = self.coco.loadCats(self.coco.getCatIds())
         self._classes = tuple([c["name"] for c in cats])

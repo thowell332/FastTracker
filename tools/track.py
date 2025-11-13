@@ -316,6 +316,15 @@ def load_or_init_config(args):
         with open(args.config, "r") as f:
             run_config = json.load(f)
         print(f"[CONFIG FILE]: Loaded configuration from {args.config}")
+        # Log sequence config if present
+        if "sequence_config" in run_config:
+            seq_config = run_config["sequence_config"]
+            print(f"[CONFIG FILE]: Found {len(seq_config)} sequence-specific configurations:")
+            for seq_name, seq_cfg in seq_config.items():
+                config_str = ", ".join([f"{k}={v}" for k, v in seq_cfg.items()])
+                print(f"  - {seq_name}: {config_str}")
+        else:
+            print("[CONFIG FILE]: No sequence-specific configurations found")
     else:
         # One place where all defaults live
         run_config = {
